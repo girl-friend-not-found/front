@@ -559,7 +559,7 @@ PlayerSettings:
   enableInternalProfiler: 0
   logObjCUncaughtExceptions: 1
   enableCrashReportAPI: 0
-  cameraUsageDescription: 
+  cameraUsageDescription: "FaceTime HD\u30AB\u30E1\u30E9"
   locationUsageDescription: 
   microphoneUsageDescription: 
   bluetoothUsageDescription: 
