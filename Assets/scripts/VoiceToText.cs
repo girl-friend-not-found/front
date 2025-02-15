@@ -3,7 +3,7 @@ using System.IO;
 using UnityEngine.Networking;
 using System.Collections;
 using System.Text;
-using UnityEngine.UI; // UI名前空間を追加
+using UnityEngine.UI;
 using System.Threading.Tasks;
 
 public class VoiceToText : MonoBehaviour
@@ -11,13 +11,14 @@ public class VoiceToText : MonoBehaviour
     private AudioClip audioClip;
     private string microphoneName;
     private bool isRecording = false;
-    private const string BackendUrl = "http://localhost:8000/transcribe"; // 文字起こしエンドポイント
+    private const string BackendUrl = "http://localhost:8000/transcribe";
 
     [SerializeField] private AivisSpeech aivisSpeech;
-
     public Text displayText;
 
-    // Start is called before the first frame update
+    // Webカメラから画像を取得するための参照
+    [SerializeField] private WebCamCapture webCamCapture;
+
     void Start()
     {
         if (Microphone.devices.Length > 0)
@@ -57,12 +58,27 @@ public class VoiceToText : MonoBehaviour
     {
         if (audioClip == null) yield break;
 
+        // 1) 音声をWAV化
         float[] samples = new float[audioClip.samples];
         audioClip.GetData(samples, 0);
         byte[] wavData = ConvertToWAV(samples, audioClip.frequency, 1);
 
+        // 2) カメラ画像（Base64）を取得
+        string base64Image = null;
+        if (webCamCapture != null)
+        {
+            base64Image = webCamCapture.GetCamImageBase64();
+        }
+
+        // 3) multipart/form-data で送る
         WWWForm form = new WWWForm();
         form.AddBinaryData("file", wavData, "audio.wav", "audio/wav");
+        
+        // 画像が取得できている場合のみ
+        if (!string.IsNullOrEmpty(base64Image))
+        {
+            form.AddField("img", base64Image);  // ＜ポイント：ここで Base64文字列を送信
+        }
 
         using (UnityWebRequest request = UnityWebRequest.Post(BackendUrl, form))
         {
@@ -70,17 +86,33 @@ public class VoiceToText : MonoBehaviour
 
             if (request.result == UnityWebRequest.Result.Success)
             {
-                // JSONレスポンスをパース
+                Debug.Log($"受信したレスポンス: {request.downloadHandler.text}");  // 生のJSONを確認
+                
                 var response = JsonUtility.FromJson<TranscriptionResponse>(request.downloadHandler.text);
                 Debug.Log($"文字起こし: {response.transcription}");
                 Debug.Log($"AIの応答: {response.reply}");
                 
+                if (response.emotion != null)
+                {
+                    Debug.Log("感情分析結果:");
+                    Debug.Log($"- 怒り: {response.emotion.angry}%");
+                    Debug.Log($"- 嫌悪: {response.emotion.disgust}%");
+                    Debug.Log($"- 恐れ: {response.emotion.fear}%");
+                    Debug.Log($"- 幸福: {response.emotion.happy}%");
+                    Debug.Log($"- 悲しみ: {response.emotion.sad}%");
+                    Debug.Log($"- 驚き: {response.emotion.surprise}%");
+                    Debug.Log($"- 中立: {response.emotion.neutral}%");
+                }
+                else
+                {
+                    Debug.LogWarning("感情データが含まれていません");
+                }
+
                 if (displayText != null)
                 {
                     displayText.text = response.reply;
                 }
-                
-                // AIの応答を読み上げる
+
                 if (aivisSpeech != null && response.should_speak && !string.IsNullOrEmpty(response.reply))
                 {
                     Debug.Log("音声合成を開始します...");
@@ -91,7 +123,8 @@ public class VoiceToText : MonoBehaviour
             }
             else
             {
-                Debug.LogError("エラー: " + request.error);
+                Debug.LogError($"エラー: {request.error}");
+                Debug.LogError($"レスポンス: {request.downloadHandler.text}");
             }
         }
     }
@@ -110,20 +143,24 @@ public class VoiceToText : MonoBehaviour
     }
 
     [System.Serializable]
+    private class EmotionData
+    {
+        public float angry;
+        public float disgust;
+        public float fear;
+        public float happy;
+        public float sad;
+        public float surprise;
+        public float neutral;
+    }
+
+    [System.Serializable]
     private class TranscriptionResponse
     {
         public string transcription;
         public string reply;
         public bool should_speak;
-    }
-
-    public float[] GetAudioData()
-    {
-        if (audioClip == null) return null;
-
-        float[] samples = new float[audioClip.samples];
-        audioClip.GetData(samples, 0);
-        return samples;
+        public EmotionData emotion;
     }
 
     private static byte[] ConvertToWAV(float[] audioData, int sampleRate, int channels)
@@ -153,11 +190,5 @@ public class VoiceToText : MonoBehaviour
             }
             return stream.ToArray();
         }
-    }
-
-    // Update is called once per frame
-    void Update()
-    {
-
     }
 }
