@@ -4,6 +4,7 @@ using UnityEngine.Networking;
 using System.Collections;
 using System.Text;
 using UnityEngine.UI; // UI名前空間を追加
+using System.Threading.Tasks;
 
 public class VoiceToText : MonoBehaviour
 {
@@ -12,10 +13,11 @@ public class VoiceToText : MonoBehaviour
     private bool isRecording = false;
     private const string BackendUrl = "http://localhost:8000/transcribe"; // 文字起こしエンドポイント
 
+    [SerializeField] private AivisSpeech aivisSpeech;
 
     public Text displayText;
 
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
+    // Start is called before the first frame update
     void Start()
     {
         if (Microphone.devices.Length > 0)
@@ -75,7 +77,16 @@ public class VoiceToText : MonoBehaviour
                 
                 if (displayText != null)
                 {
-                    displayText.text = response.reply; // AIの応答を表示
+                    displayText.text = response.reply;
+                }
+                
+                // AIの応答を読み上げる
+                if (aivisSpeech != null && response.should_speak && !string.IsNullOrEmpty(response.reply))
+                {
+                    Debug.Log("音声合成を開始します...");
+                    var operation = new WaitForAsyncOperation(aivisSpeech.SpeakText(response.reply));
+                    yield return operation;
+                    Debug.Log("音声合成が完了しました");
                 }
             }
             else
@@ -85,11 +96,25 @@ public class VoiceToText : MonoBehaviour
         }
     }
 
+    // 非同期処理をコルーチンで待機するためのヘルパークラス
+    public class WaitForAsyncOperation : CustomYieldInstruction
+    {
+        private Task task;
+
+        public WaitForAsyncOperation(Task task)
+        {
+            this.task = task;
+        }
+
+        public override bool keepWaiting => !task.IsCompleted;
+    }
+
     [System.Serializable]
     private class TranscriptionResponse
     {
         public string transcription;
         public string reply;
+        public bool should_speak;
     }
 
     public float[] GetAudioData()
@@ -130,7 +155,6 @@ public class VoiceToText : MonoBehaviour
         }
     }
 
-    
     // Update is called once per frame
     void Update()
     {
