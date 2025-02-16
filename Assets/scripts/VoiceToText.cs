@@ -5,6 +5,8 @@ using System.Collections;
 using System.Text;
 using UnityEngine.UI;
 using System.Threading.Tasks;
+using System.Collections.Generic;
+using System.Linq;
 
 public class VoiceToText : MonoBehaviour
 {
@@ -18,6 +20,8 @@ public class VoiceToText : MonoBehaviour
 
     // Webカメラから画像を取得するための参照
     [SerializeField] private WebCamCapture webCamCapture;
+
+    [SerializeField] private MyAnimationController AnimationControl;
 
     void Start()
     {
@@ -102,6 +106,15 @@ public class VoiceToText : MonoBehaviour
                     Debug.Log($"- 悲しみ: {response.emotion.sad}%");
                     Debug.Log($"- 驚き: {response.emotion.surprise}%");
                     Debug.Log($"- 中立: {response.emotion.neutral}%");
+                    string dominantEmotion = response.GetDominantEmotion();
+                    Debug.Log($"最も強い感情: {dominantEmotion}");
+
+                    // アニメーション制御スクリプトに渡す
+                    MyAnimationController animController = FindObjectOfType<MyAnimationController>();
+                    if (animController != null)
+                    {
+                        animController.SetEmotion(dominantEmotion);
+                    }
                 }
                 else
                 {
@@ -161,6 +174,24 @@ public class VoiceToText : MonoBehaviour
         public string reply;
         public bool should_speak;
         public EmotionData emotion;
+
+        public string GetDominantEmotion()
+        {
+            if (emotion == null) return null;
+
+            var emotions = new Dictionary<string, float>
+            {
+                { "angry", emotion.angry },
+                { "disgust", emotion.disgust },
+                { "fear", emotion.fear },
+                { "happy", emotion.happy },
+                { "sad", emotion.sad },
+                { "surprise", emotion.surprise },
+                { "neutral", emotion.neutral }
+            };
+
+            return emotions.Aggregate((l, r) => l.Value > r.Value ? l : r).Key;
+        }
     }
 
     private static byte[] ConvertToWAV(float[] audioData, int sampleRate, int channels)
